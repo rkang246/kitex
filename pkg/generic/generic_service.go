@@ -124,6 +124,9 @@ func (g *Args) Read(ctx context.Context, method string, in thrift.TProtocol) err
 	return fmt.Errorf("unexpected Args reader type: %T", g.inner)
 }
 
+func (g *Args) Raise(err error) {
+}
+
 // GetFirstArgument implements util.KitexArgs.
 func (g *Args) GetFirstArgument() interface{} {
 	return g.Request
@@ -152,6 +155,9 @@ func (r *Result) Write(ctx context.Context, out thrift.TProtocol) error {
 		return w.Write(ctx, out, r.Success, nil)
 	}
 	return fmt.Errorf("unexpected Result writer type: %T", r.inner)
+}
+
+func (r *Result) Raise(err error) {
 }
 
 // Read ...
