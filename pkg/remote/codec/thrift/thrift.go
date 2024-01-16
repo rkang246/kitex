@@ -112,7 +112,14 @@ func (c thriftCodec) Marshal(ctx context.Context, message remote.Message, out re
 	// encode with normal way
 	tProt := NewBinaryProtocol(out)
 	if err := tProt.WriteMessageBegin(methodName, thrift.TMessageType(msgType), seqID); err != nil {
-		return perrors.NewProtocolErrorWithMsg(fmt.Sprintf("thrift marshal, WriteMessageBegin failed: %s", err.Error()))
+		e := perrors.NewProtocolErrorWithMsg(fmt.Sprintf("thrift marshal, WriteMessageBegin failed: %s", err.Error()))
+		switch msg := data.(type) {
+		case MessageWriter:
+			msg.Raise(e)
+		case MessageWriterWithContext:
+			msg.Raise(e)
+		}
+		return e
 	}
 	switch msg := data.(type) {
 	case MessageWriter:
@@ -242,11 +249,13 @@ func (c thriftCodec) Name() string {
 // MessageWriterWithContext write to thrift.TProtocol
 type MessageWriterWithContext interface {
 	Write(ctx context.Context, oprot thrift.TProtocol) error
+	Raise(err error)
 }
 
 // MessageWriter write to thrift.TProtocol
 type MessageWriter interface {
 	Write(oprot thrift.TProtocol) error
+	Raise(err error)
 }
 
 // MessageReader read from thrift.TProtocol
