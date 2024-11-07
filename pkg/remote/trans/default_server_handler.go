@@ -123,6 +123,7 @@ func (t *svrTransHandler) newCtxWithRPCInfo(ctx context.Context, conn net.Conn) 
 // OnRead implements the remote.ServerTransHandler interface.
 // The connection should be closed after returning error.
 func (t *svrTransHandler) OnRead(ctx context.Context, conn net.Conn) (err error) {
+	klog.CtxInfof(ctx, "BBBB OnRead invoked -> BEGIN")
 	ctx, ri := t.newCtxWithRPCInfo(ctx, conn)
 	t.ext.SetReadTimeout(ctx, conn, ri.Config(), remote.Server)
 	var recvMsg remote.Message
@@ -168,6 +169,7 @@ func (t *svrTransHandler) OnRead(ctx context.Context, conn net.Conn) (err error)
 	ctx, err = t.transPipe.Read(ctx, conn, recvMsg)
 	if err != nil {
 		t.writeErrorReplyIfNeeded(ctx, recvMsg, conn, err, ri, true)
+		klog.CtxInfof(ctx, "BBBB OnRead invoked -> error at transPipe.Read %v", err)
 		t.OnError(ctx, err, conn)
 		return err
 	}
@@ -184,9 +186,14 @@ func (t *svrTransHandler) OnRead(ctx context.Context, conn net.Conn) (err error)
 			// it won't be err, because the method has been checked in decode, err check here just do defensive inspection
 			t.writeErrorReplyIfNeeded(ctx, recvMsg, conn, err, ri, true)
 			// for proxy case, need read actual remoteAddr, error print must exec after writeErrorReplyIfNeeded
+
+			klog.CtxInfof(ctx, "BBBB OnRead invoked -> unlikely error at GetMethodInfo %v", err)
 			t.OnError(ctx, err, conn)
 			return err
 		}
+
+		klog.CtxInfof(ctx, "BBBB OnRead invoked -> finish GetMethodInfo, methodInfo %v", methodInfo)
+
 		if methodInfo.OneWay() {
 			sendMsg = remote.NewMessage(nil, t.svcInfo, ri, remote.Reply, remote.Server)
 		} else {
@@ -195,9 +202,12 @@ func (t *svrTransHandler) OnRead(ctx context.Context, conn net.Conn) (err error)
 
 		ctx, err = t.transPipe.OnMessage(ctx, recvMsg, sendMsg)
 		if err != nil {
+			klog.CtxInfof(ctx, "BBBB OnRead invoked -> OnMessage -> failed, error=%v", err)
 			// error cannot be wrapped to print here, so it must exec before NewTransError
 			t.OnError(ctx, err, conn)
 			err = remote.NewTransError(remote.InternalError, err)
+
+			klog.CtxInfof(ctx, "BBBB OnRead invoked -> OnMessage -> failed -> remote.NewTransError %v", err)
 			if closeConn := t.writeErrorReplyIfNeeded(ctx, recvMsg, conn, err, ri, false); closeConn {
 				return err
 			}
@@ -205,6 +215,8 @@ func (t *svrTransHandler) OnRead(ctx context.Context, conn net.Conn) (err error)
 			closeConnOutsideIfErr = false
 			return
 		}
+
+		klog.CtxInfof(ctx, "BBBB OnRead invoked -> OnMessage -> success, no error")
 	}
 
 	remote.FillSendMsgFromRecvMsg(recvMsg, sendMsg)
@@ -237,6 +249,7 @@ func (t *svrTransHandler) OnInactive(ctx context.Context, conn net.Conn) {
 
 // OnError implements the remote.ServerTransHandler interface.
 func (t *svrTransHandler) OnError(ctx context.Context, err error, conn net.Conn) {
+	klog.CtxInfof(ctx, "AAAA OnError invoked, error %v -> BEGIN", err)
 	ri := rpcinfo.GetRPCInfo(ctx)
 	rService, rAddr := getRemoteInfo(ri, conn)
 	if t.ext.IsRemoteClosedErr(err) {
@@ -249,8 +262,10 @@ func (t *svrTransHandler) OnError(ctx context.Context, err error, conn net.Conn)
 	} else {
 		var de *kerrors.DetailedError
 		if ok := errors.As(err, &de); ok && de.Stack() != "" {
+			klog.CtxInfof(ctx, "AAAA OnError invoked, error %v -> prepare log with stack", err)
 			klog.CtxErrorf(ctx, "KITEX: processing request error, remoteService=%s, remoteAddr=%v, error=%s\nstack=%s", rService, rAddr, err.Error(), de.Stack())
 		} else {
+			klog.CtxInfof(ctx, "AAAA OnError invoked, error %v -> prepare log without stack", err)
 			klog.CtxErrorf(ctx, "KITEX: processing request error, remoteService=%s, remoteAddr=%v, error=%s", rService, rAddr, err.Error())
 		}
 	}
@@ -269,8 +284,12 @@ func (t *svrTransHandler) SetPipeline(p *remote.TransPipeline) {
 func (t *svrTransHandler) writeErrorReplyIfNeeded(
 	ctx context.Context, recvMsg remote.Message, conn net.Conn, err error, ri rpcinfo.RPCInfo, doOnMessage bool,
 ) (shouldCloseConn bool) {
+
+	klog.CtxInfof(ctx, "BBBB writeErrorReplyIfNeeded -> begin")
 	if cn, ok := conn.(remote.IsActive); ok && !cn.IsActive() {
 		// conn is closed, no need reply
+
+		klog.CtxInfof(ctx, "BBBB writeErrorReplyIfNeeded -> conn closed no need reply")
 		return
 	}
 	if methodInfo, _ := GetMethodInfo(ri, t.svcInfo); methodInfo != nil {
@@ -290,9 +309,13 @@ func (t *svrTransHandler) writeErrorReplyIfNeeded(
 	}
 	ctx, err = t.transPipe.Write(ctx, conn, errMsg)
 	if err != nil {
+
+		klog.CtxInfof(ctx, "BBBB writeErrorReplyIfNeeded -> transpipe.Write fail %v", err)
 		klog.CtxErrorf(ctx, "KITEX: write error reply failed, remote=%s, error=%s", conn.RemoteAddr(), err.Error())
 		return true
 	}
+
+	klog.CtxInfof(ctx, "BBBB writeErrorReplyIfNeeded -> transPipe.Write succeed")
 	return
 }
 
