@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"runtime"
 	"runtime/debug"
 
 	"github.com/cloudwego/kitex/pkg/endpoint"
@@ -235,10 +236,21 @@ func (t *svrTransHandler) OnError(ctx context.Context, err error, conn net.Conn)
 		remote := rpcinfo.AsMutableEndpointInfo(ri.From())
 		remote.SetTag(rpcinfo.RemoteClosedTag, "1")
 	} else {
+		klog.CtxErrorf(ctx, "AAAA default_server_handler OnError start")
 		var de *kerrors.DetailedError
 		if ok := errors.As(err, &de); ok && de.Stack() != "" {
 			klog.CtxErrorf(ctx, "KITEX: processing request error, remoteService=%s, remoteAddr=%v, error=%s\nstack=%s", rService, rAddr, err.Error(), de.Stack())
 		} else {
+			buf := make([]byte, 1024)
+			for {
+				n := runtime.Stack(buf, false)
+				if n < len(buf) {
+					buf = buf[:n]
+					break
+				}
+				buf = make([]byte, 2*len(buf))
+			}
+			klog.CtxInfof(ctx, "AAAA default_server_handler Stack trace:\n%s", buf)
 			klog.CtxErrorf(ctx, "KITEX: processing request error, remoteService=%s, remoteAddr=%v, error=%s", rService, rAddr, err.Error())
 		}
 	}
